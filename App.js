@@ -20,24 +20,24 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 const INITIAL_CONTACTS = [
-  { id: '1', name: 'Henry Ramirez Jr', phone: '239-784-1766', note: 'My card', favorite: true },
-  { id: '2', name: 'Brian Abby (husband)', phone: '239-784-5517', favorite: true },
-  { id: '3', name: 'Abel', phone: '239-784-3412', favorite: false },
-  { id: '4', name: 'Abimaer', phone: '239-577-1542', favorite: false },
-  { id: '5', name: 'Abraham', phone: '239-577-1543', favorite: false },
-  { id: '6', name: 'Alex ACV', phone: '239-577-1544', favorite: false },
-  { id: '7', name: 'Adam', phone: '239-577-1545', favorite: false },
-  { id: '8', name: 'Adam DR', phone: '239-577-1546', favorite: false },
-  { id: '9', name: 'Adji', phone: '239-577-1547', favorite: false },
-  { id: '10', name: 'Adonis', phone: '239-577-1548', favorite: false },
-  { id: '11', name: 'Adriana', phone: '239-577-1549', favorite: false },
-  { id: '12', name: 'Sofia Ramirez', phone: '239-577-1550', favorite: true },
+  { id: '1', name: 'Henry Ramirez Jr', phone: '239-784-6746', note: 'My card', favorite: true },
+  { id: '2', name: 'Brian Abby (husband)', phone: '239-784-7865', favorite: true },
+  { id: '3', name: 'Abel', phone: '239-784-2314', favorite: false },
+  { id: '4', name: 'Abimaer', phone: '239-577-1726', favorite: false },
+  { id: '5', name: 'Abraham', phone: '239-577-8769', favorite: false },
+  { id: '6', name: 'Alex ACV', phone: '239-577-8944', favorite: false },
+  { id: '7', name: 'Adam', phone: '239-577-3825', favorite: false },
+  { id: '8', name: 'Adam DR', phone: '239-577-3287', favorite: false },
+  { id: '9', name: 'Adji', phone: '239-577-0291', favorite: false },
+  { id: '10', name: 'Adonis', phone: '239-577-2763', favorite: false },
+  { id: '11', name: 'Adriana', phone: '239-577-9827', favorite: false },
+  { id: '12', name: 'Sofia Ramirez', phone: '239-577-9309', favorite: true },
 ];
 
 const INITIAL_RECENTS = [
-  { id: 'r1', name: 'Brian Abby (husband)', phone: '239-784-5517', type: 'Outgoing', time: 'Today' },
-  { id: 'r2', name: 'Sofia Ramirez', phone: '239-577-1550', type: 'Missed', time: 'Yesterday' },
-  { id: 'r3', name: 'Adonis', phone: '239-577-1548', type: 'Incoming', time: 'Thursday' },
+  { id: 'r1', name: 'Brian Abby (husband)', phone: '239-784-6547', type: 'Outgoing', time: 'Today' },
+  { id: 'r2', name: 'Sofia Ramirez', phone: '239-577-9780', type: 'Missed', time: 'Yesterday' },
+  { id: 'r3', name: 'Adonis', phone: '239-577-7654', type: 'Incoming', time: 'Thursday' },
 ];
 
 const TABS = [
@@ -144,8 +144,10 @@ export default function App() {
   const [recents, setRecents] = useState(INITIAL_RECENTS);
   const [activeTab, setActiveTab] = useState('contacts');
   const [showAddContact, setShowAddContact] = useState(false);
+  const [formMode, setFormMode] = useState('add');
+  const [selectedContactId, setSelectedContactId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [newContact, setNewContact] = useState({ name: '', phone: '' });
+  const [newContact, setNewContact] = useState({ name: '', phone: '', note: '' });
   const [dialedNumber, setDialedNumber] = useState('');
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const sectionListRef = useRef(null);
@@ -155,12 +157,26 @@ export default function App() {
     () => sortContacts(contacts.filter((contact) => contact.favorite)),
     [contacts]
   );
+  const selectedContact = useMemo(
+    () => contacts.find((contact) => contact.id === selectedContactId) ?? null,
+    [contacts, selectedContactId]
+  );
 
   const resetForm = () => {
-    setNewContact({ name: '', phone: '' });
+    setNewContact({ name: '', phone: '', note: '' });
   };
 
-  const handleShowForm = () => {
+  const handleShowForm = (mode = 'add', contact = null) => {
+    setFormMode(mode);
+    setNewContact(
+      contact
+        ? {
+            name: contact.name,
+            phone: contact.phone,
+            note: contact.note ?? '',
+          }
+        : { name: '', phone: '', note: '' }
+    );
     setShowAddContact(true);
     Animated.timing(slideAnim, {
       toValue: 0,
@@ -177,13 +193,15 @@ export default function App() {
       useNativeDriver: true,
     }).start(() => {
       setShowAddContact(false);
+      setFormMode('add');
       resetForm();
     });
   };
 
-  const addContact = () => {
+  const saveContact = () => {
     const trimmedName = newContact.name.trim();
     const trimmedPhone = newContact.phone.trim();
+    const trimmedNote = newContact.note.trim();
     const isValidPhone = /^[0-9()\-\s]+$/.test(trimmedPhone);
 
     if (!trimmedName || !trimmedPhone || !isValidPhone) {
@@ -191,24 +209,52 @@ export default function App() {
       return;
     }
 
-    const createdContact = {
-      id: Date.now().toString(),
-      name: trimmedName,
-      phone: trimmedPhone,
-      favorite: false,
-    };
-
-    setContacts((currentContacts) => [...currentContacts, createdContact]);
-    setRecents((currentRecents) => [
-      {
-        id: `r-${Date.now()}`,
+    if (formMode === 'edit' && selectedContact) {
+      setContacts((currentContacts) =>
+        currentContacts.map((contact) =>
+          contact.id === selectedContact.id
+            ? {
+                ...contact,
+                name: trimmedName,
+                phone: trimmedPhone,
+                note: trimmedNote || undefined,
+              }
+            : contact
+        )
+      );
+      setRecents((currentRecents) => [
+        {
+          id: `r-${Date.now()}`,
+          name: trimmedName,
+          phone: trimmedPhone,
+          type: 'Updated',
+          time: 'Just now',
+        },
+        ...currentRecents,
+      ]);
+    } else {
+      const createdContact = {
+        id: Date.now().toString(),
         name: trimmedName,
         phone: trimmedPhone,
-        type: 'Added',
-        time: 'Just now',
-      },
-      ...currentRecents,
-    ]);
+        note: trimmedNote || undefined,
+        favorite: false,
+      };
+
+      setContacts((currentContacts) => [...currentContacts, createdContact]);
+      setRecents((currentRecents) => [
+        {
+          id: `r-${Date.now()}`,
+          name: trimmedName,
+          phone: trimmedPhone,
+          type: 'Added',
+          time: 'Just now',
+        },
+        ...currentRecents,
+      ]);
+      setSelectedContactId(createdContact.id);
+    }
+
     setActiveTab('contacts');
     setSearchQuery('');
     handleHideForm();
@@ -222,6 +268,19 @@ export default function App() {
           : contact
       )
     );
+  };
+
+  const openContact = (contactId) => {
+    setSelectedContactId(contactId);
+  };
+
+  const handleBackAction = () => {
+    if (selectedContactId) {
+      setSelectedContactId(null);
+      return;
+    }
+
+    Keyboard.dismiss();
   };
 
   const jumpToSection = (letter) => {
@@ -245,34 +304,98 @@ export default function App() {
     setDialedNumber((current) => current.slice(0, -1));
   };
 
-  const placeCall = () => {
-    if (!dialedNumber) {
+  const placeCall = (phone = dialedNumber, contactOverride = null) => {
+    if (!phone) {
       Alert.alert('No number entered', 'Type a phone number to place a call.');
       return;
     }
 
-    const matchedContact = contacts.find((contact) => contact.phone.includes(dialedNumber));
+    const matchedContact = contactOverride ?? contacts.find((contact) => contact.phone.includes(phone));
     const displayName = matchedContact ? matchedContact.name : 'Unknown';
 
     setRecents((currentRecents) => [
       {
         id: `r-${Date.now()}`,
         name: displayName,
-        phone: dialedNumber,
+        phone,
         type: 'Outgoing',
         time: 'Just now',
       },
       ...currentRecents,
     ]);
-    setActiveTab('recents');
-    setDialedNumber('');
+
+    if (!contactOverride) {
+      setActiveTab('recents');
+      setDialedNumber('');
+    }
+
+    Alert.alert('Calling', `Calling ${displayName} at ${phone}.`);
+  };
+
+  const sendMessage = (contact) => {
+    setRecents((currentRecents) => [
+      {
+        id: `r-${Date.now()}`,
+        name: contact.name,
+        phone: contact.phone,
+        type: 'Message',
+        time: 'Just now',
+      },
+      ...currentRecents,
+    ]);
+    Alert.alert('Messages', `Opening a conversation with ${contact.name}.`);
+  };
+
+  const editSelectedContact = () => {
+    if (selectedContact) {
+      handleShowForm('edit', selectedContact);
+    }
+  };
+
+  const deleteSelectedContact = () => {
+    if (!selectedContact) {
+      return;
+    }
+
+    Alert.alert('Delete Contact', `Remove ${selectedContact.name} from your contacts?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          setContacts((currentContacts) =>
+            currentContacts.filter((contact) => contact.id !== selectedContact.id)
+          );
+          setSelectedContactId(null);
+        },
+      },
+    ]);
+  };
+
+  const openRecentEntry = (entry) => {
+    const matchedContact = contacts.find(
+      (contact) => contact.phone === entry.phone || contact.name === entry.name
+    );
+
+    if (matchedContact) {
+      setActiveTab('contacts');
+      setSelectedContactId(matchedContact.id);
+      return;
+    }
+
+    Alert.alert('Contact not found', 'This recent item is not saved in your contacts.');
+  };
+
+  const handleTabChange = (tabKey) => {
+    setSelectedContactId(null);
+    setActiveTab(tabKey);
   };
 
   const renderContactRow = ({ item }) => {
     const palette = getAvatarPalette(item.name);
 
     return (
-      <View style={styles.contactRow}>
+      <Pressable style={styles.contactRow} onPress={() => openContact(item.id)}>
         <View style={[styles.avatar, { backgroundColor: palette.background }]}>
           <Text style={[styles.avatarText, { color: palette.text }]}>{getInitials(item.name)}</Text>
         </View>
@@ -289,7 +412,7 @@ export default function App() {
             color={item.favorite ? '#FFD45C' : '#7C7C82'}
           />
         </Pressable>
-      </View>
+      </Pressable>
     );
   };
 
@@ -306,7 +429,7 @@ export default function App() {
           const palette = getAvatarPalette(contact.name);
 
           return (
-            <View key={contact.id} style={styles.cardRow}>
+            <Pressable key={contact.id} style={styles.cardRow} onPress={() => openContact(contact.id)}>
               <View style={[styles.avatarLarge, { backgroundColor: palette.background }]}>
                 <Text style={[styles.avatarText, { color: palette.text }]}>{getInitials(contact.name)}</Text>
               </View>
@@ -317,7 +440,7 @@ export default function App() {
               <Pressable style={styles.inlineIconButton} onPress={() => toggleFavorite(contact.id)}>
                 <Ionicons name="star" size={20} color="#FFD45C" />
               </Pressable>
-            </View>
+            </Pressable>
           );
         })
       )}
@@ -327,15 +450,15 @@ export default function App() {
   const renderRecents = () => (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
       {recents.map((entry) => (
-        <View key={entry.id} style={styles.recentRow}>
+        <Pressable key={entry.id} style={styles.recentRow} onPress={() => openRecentEntry(entry)}>
           <View>
             <Text style={styles.recentName}>{entry.name}</Text>
             <Text style={[styles.recentType, { color: getRecentToneColor(entry.type) }]}>
-              {entry.type} • {entry.phone}
+              {`${entry.type} - ${entry.phone}`}
             </Text>
           </View>
           <Text style={styles.recentTime}>{entry.time}</Text>
-        </View>
+        </Pressable>
       ))}
     </ScrollView>
   );
@@ -430,7 +553,83 @@ export default function App() {
     </View>
   );
 
+  const renderContactDetails = () => {
+    if (!selectedContact) {
+      return null;
+    }
+
+    const palette = getAvatarPalette(selectedContact.name);
+
+    return (
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailContent}>
+        <View style={styles.detailHero}>
+          <View style={[styles.detailAvatar, { backgroundColor: palette.background }]}>
+            <Text style={[styles.detailAvatarText, { color: palette.text }]}>
+              {getInitials(selectedContact.name)}
+            </Text>
+          </View>
+          <Text style={styles.detailName}>{selectedContact.name}</Text>
+          <Text style={styles.detailPhone}>{selectedContact.phone}</Text>
+          {!!selectedContact.note && <Text style={styles.detailNote}>{selectedContact.note}</Text>}
+        </View>
+
+        <View style={styles.detailActions}>
+          <Pressable
+            style={styles.detailActionButton}
+            onPress={() => placeCall(selectedContact.phone, selectedContact)}
+          >
+            <Ionicons name="call" size={20} color="#30A7FF" />
+            <Text style={styles.detailActionText}>Call</Text>
+          </Pressable>
+          <Pressable style={styles.detailActionButton} onPress={() => sendMessage(selectedContact)}>
+            <Ionicons name="chatbubble" size={20} color="#30A7FF" />
+            <Text style={styles.detailActionText}>Message</Text>
+          </Pressable>
+          <Pressable
+            style={styles.detailActionButton}
+            onPress={() => toggleFavorite(selectedContact.id)}
+          >
+            <Ionicons
+              name={selectedContact.favorite ? 'star' : 'star-outline'}
+              size={20}
+              color={selectedContact.favorite ? '#FFD45C' : '#30A7FF'}
+            />
+            <Text style={styles.detailActionText}>
+              {selectedContact.favorite ? 'Favorited' : 'Favorite'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.detailCard}>
+          <Text style={styles.detailSectionLabel}>mobile</Text>
+          <Text style={styles.detailPrimaryValue}>{selectedContact.phone}</Text>
+        </View>
+
+        {!!selectedContact.note && (
+          <View style={styles.detailCard}>
+            <Text style={styles.detailSectionLabel}>notes</Text>
+            <Text style={styles.detailSecondaryValue}>{selectedContact.note}</Text>
+          </View>
+        )}
+
+        <View style={styles.detailCard}>
+          <Pressable style={styles.detailListAction} onPress={editSelectedContact}>
+            <Text style={styles.detailListActionText}>Edit Contact</Text>
+          </Pressable>
+          <View style={styles.detailDivider} />
+          <Pressable style={styles.detailListAction} onPress={deleteSelectedContact}>
+            <Text style={styles.detailDeleteText}>Delete Contact</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    );
+  };
+
   const renderActiveTab = () => {
+    if (selectedContact) {
+      return renderContactDetails();
+    }
+
     switch (activeTab) {
       case 'favorites':
         return renderFavorites();
@@ -457,21 +656,27 @@ export default function App() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View style={styles.topBar}>
-            <Pressable style={styles.circleButton}>
-              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            <Pressable style={styles.circleButton} onPress={handleBackAction}>
+              <Ionicons
+                name={selectedContact ? 'chevron-back' : 'reorder-two-outline'}
+                size={22}
+                color="#FFFFFF"
+              />
             </Pressable>
 
-            <Text style={styles.title}>{getTabTitle(activeTab)}</Text>
+            <Text style={styles.title} numberOfLines={1}>
+              {selectedContact ? selectedContact.name : getTabTitle(activeTab)}
+            </Text>
 
             <Pressable
               style={styles.circleButton}
-              onPress={handleShowForm}
-              disabled={activeTab !== 'contacts'}
+              onPress={() => (selectedContact ? editSelectedContact() : handleShowForm())}
+              disabled={activeTab !== 'contacts' && !selectedContact}
             >
               <Ionicons
-                name="add"
+                name={selectedContact ? 'create-outline' : 'add'}
                 size={22}
-                color={activeTab === 'contacts' ? '#FFFFFF' : '#5A5A60'}
+                color={activeTab === 'contacts' || selectedContact ? '#FFFFFF' : '#5A5A60'}
               />
             </Pressable>
           </View>
@@ -506,7 +711,7 @@ export default function App() {
                 <Pressable
                   key={tab.key}
                   style={[styles.tabItem, isActive && styles.activeTab]}
-                  onPress={() => setActiveTab(tab.key)}
+                  onPress={() => handleTabChange(tab.key)}
                 >
                   {icon}
                   <Text style={isActive ? styles.activeTabLabel : styles.tabLabel}>{tab.label}</Text>
@@ -518,53 +723,87 @@ export default function App() {
           {showAddContact && (
             <View style={styles.overlay}>
               <Pressable style={styles.backdrop} onPress={handleHideForm} />
-              <Animated.View
-                style={[
-                  styles.sheet,
-                  {
-                    transform: [{ translateY: slideAnim }],
-                  },
-                ]}
+              <KeyboardAvoidingView
+                style={styles.overlayKeyboardArea}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
               >
-                <View style={styles.sheetHandle} />
-                <Text style={styles.sheetTitle}>New Contact</Text>
+                <Animated.View
+                  style={[
+                    styles.sheet,
+                    {
+                      transform: [{ translateY: slideAnim }],
+                    },
+                  ]}
+                >
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.sheetScrollContent}
+                  >
+                    <View style={styles.sheetHandle} />
+                    <Text style={styles.sheetTitle}>
+                      {formMode === 'edit' ? 'Edit Contact' : 'New Contact'}
+                    </Text>
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="Full name"
-                  placeholderTextColor="#8A8A8F"
-                  value={newContact.name}
-                  onChangeText={(text) =>
-                    setNewContact((current) => ({
-                      ...current,
-                      name: text,
-                    }))
-                  }
-                />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Full name"
+                      placeholderTextColor="#8A8A8F"
+                      value={newContact.name}
+                      onChangeText={(text) =>
+                        setNewContact((current) => ({
+                          ...current,
+                          name: text,
+                        }))
+                      }
+                      autoFocus
+                      returnKeyType="next"
+                    />
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone number"
-                  placeholderTextColor="#8A8A8F"
-                  value={newContact.phone}
-                  onChangeText={(text) =>
-                    setNewContact((current) => ({
-                      ...current,
-                      phone: formatPhoneInput(text),
-                    }))
-                  }
-                  keyboardType="phone-pad"
-                />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Phone number"
+                      placeholderTextColor="#8A8A8F"
+                      value={newContact.phone}
+                      onChangeText={(text) =>
+                        setNewContact((current) => ({
+                          ...current,
+                          phone: formatPhoneInput(text),
+                        }))
+                      }
+                      keyboardType="phone-pad"
+                      returnKeyType="next"
+                    />
 
-                <View style={styles.sheetActions}>
-                  <Pressable style={styles.secondaryAction} onPress={handleHideForm}>
-                    <Text style={styles.secondaryActionText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable style={styles.primaryAction} onPress={addContact}>
-                    <Text style={styles.primaryActionText}>Save</Text>
-                  </Pressable>
-                </View>
-              </Animated.View>
+                    <TextInput
+                      style={[styles.input, styles.noteInput]}
+                      placeholder="Notes"
+                      placeholderTextColor="#8A8A8F"
+                      value={newContact.note}
+                      onChangeText={(text) =>
+                        setNewContact((current) => ({
+                          ...current,
+                          note: text,
+                        }))
+                      }
+                      multiline
+                      textAlignVertical="top"
+                    />
+
+                    <View style={styles.sheetActions}>
+                      <Pressable style={styles.secondaryAction} onPress={handleHideForm}>
+                        <Text style={styles.secondaryActionText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable style={styles.primaryAction} onPress={saveContact}>
+                        <Text style={styles.primaryActionText}>
+                          {formMode === 'edit' ? 'Update' : 'Save'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </ScrollView>
+                </Animated.View>
+              </KeyboardAvoidingView>
             </View>
           )}
         </KeyboardAvoidingView>
@@ -603,6 +842,9 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.4,
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 14,
   },
   contentArea: {
     flex: 1,
@@ -824,6 +1066,111 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  detailContent: {
+    paddingBottom: 110,
+  },
+  detailHero: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 28,
+  },
+  detailAvatar: {
+    width: 98,
+    height: 98,
+    borderRadius: 49,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  detailAvatarText: {
+    fontSize: 34,
+    fontWeight: '700',
+  },
+  detailName: {
+    color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  detailPhone: {
+    color: '#B8B8BF',
+    fontSize: 16,
+    marginTop: 8,
+  },
+  detailNote: {
+    color: '#8C8C92',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 10,
+    paddingHorizontal: 24,
+  },
+  detailActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  detailActionButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#141416',
+    borderRadius: 18,
+    paddingVertical: 16,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#232327',
+  },
+  detailActionText: {
+    color: '#E7E7ED',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  detailCard: {
+    backgroundColor: '#141416',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#232327',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    marginBottom: 14,
+  },
+  detailSectionLabel: {
+    color: '#8C8C92',
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  detailPrimaryValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  detailSecondaryValue: {
+    color: '#E7E7ED',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  detailListAction: {
+    paddingVertical: 6,
+  },
+  detailListActionText: {
+    color: '#30A7FF',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  detailDeleteText: {
+    color: '#FF6B6B',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  detailDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#202022',
+    marginVertical: 12,
+  },
   centerPanel: {
     flex: 1,
     alignItems: 'center',
@@ -922,6 +1269,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
   },
+  overlayKeyboardArea: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.48)',
@@ -935,6 +1286,10 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     borderWidth: 1,
     borderColor: '#242428',
+    maxHeight: '88%',
+  },
+  sheetScrollContent: {
+    paddingBottom: 12,
   },
   sheetHandle: {
     alignSelf: 'center',
@@ -960,6 +1315,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#252529',
+  },
+  noteInput: {
+    minHeight: 96,
+    textAlignVertical: 'top',
   },
   sheetActions: {
     flexDirection: 'row',

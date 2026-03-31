@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -38,6 +38,49 @@ const INITIAL_RECENTS = [
   { id: 'r1', name: 'Brian Abby (husband)', phone: '239-784-6547', type: 'Outgoing', time: 'Today' },
   { id: 'r2', name: 'Sofia Ramirez', phone: '239-577-9780', type: 'Missed', time: 'Yesterday' },
   { id: 'r3', name: 'Adonis', phone: '239-577-7654', type: 'Incoming', time: 'Thursday' },
+];
+
+const INITIAL_VOICEMAILS = [
+  {
+    id: 'v1',
+    name: 'Brian Abby (husband)',
+    phone: '239-784-7865',
+    time: 'Today, 8:42 PM',
+    duration: '0:27',
+    transcript:
+      'Hey love, I just left the store. Call me when you are free so I can see if you need anything else.',
+    unread: true,
+  },
+  {
+    id: 'v2',
+    name: 'Unknown',
+    phone: '(800) 555-0148',
+    time: 'Today, 1:16 PM',
+    duration: '1:04',
+    transcript:
+      'This is a reminder that your delivery window has been updated. Please check the app for your new arrival time.',
+    unread: true,
+  },
+  {
+    id: 'v3',
+    name: 'Sofia Ramirez',
+    phone: '239-577-9309',
+    time: 'Yesterday',
+    duration: '0:15',
+    transcript:
+      'Abuelo is asking if we are still doing dinner on Sunday. Text me back when you get a second.',
+    unread: false,
+  },
+  {
+    id: 'v4',
+    name: 'Dr. Patel Office',
+    phone: '(239) 555-0192',
+    time: 'Friday',
+    duration: '0:41',
+    transcript:
+      'Calling to confirm your appointment for next week. Please arrive ten minutes early for check-in.',
+    unread: false,
+  },
 ];
 
 const TABS = [
@@ -142,6 +185,7 @@ const getRecentToneColor = (type) => {
 export default function App() {
   const [contacts, setContacts] = useState(INITIAL_CONTACTS);
   const [recents, setRecents] = useState(INITIAL_RECENTS);
+  const [voicemails] = useState(INITIAL_VOICEMAILS);
   const [activeTab, setActiveTab] = useState('contacts');
   const [showAddContact, setShowAddContact] = useState(false);
   const [formMode, setFormMode] = useState('add');
@@ -149,6 +193,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [newContact, setNewContact] = useState({ name: '', phone: '', note: '' });
   const [dialedNumber, setDialedNumber] = useState('');
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const sectionListRef = useRef(null);
 
@@ -161,6 +206,28 @@ export default function App() {
     () => contacts.find((contact) => contact.id === selectedContactId) ?? null,
     [contacts, selectedContactId]
   );
+  const unreadVoicemailCount = useMemo(
+    () => voicemails.filter((voicemail) => voicemail.unread).length,
+    [voicemails]
+  );
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height ?? 0);
+    });
+
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const resetForm = () => {
     setNewContact({ name: '', phone: '', note: '' });
@@ -546,11 +613,50 @@ export default function App() {
   );
 
   const renderVoicemail = () => (
-    <View style={styles.centerPanel}>
-      <MaterialCommunityIcons name="voicemail" size={54} color="#FFFFFF" />
-      <Text style={styles.centerTitle}>Voicemail</Text>
-      <Text style={styles.centerCopy}>326 unheard messages waiting in your inbox.</Text>
-    </View>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.voicemailContent}>
+      <View style={styles.voicemailSummaryCard}>
+        <View>
+          <Text style={styles.voicemailSummaryLabel}>Visual Voicemail</Text>
+          <Text style={styles.voicemailSummaryValue}>{unreadVoicemailCount} Unheard</Text>
+        </View>
+        <MaterialCommunityIcons name="voicemail" size={28} color="#30A7FF" />
+      </View>
+
+      {voicemails.map((entry) => (
+        <Pressable key={entry.id} style={styles.voicemailRow}>
+          <View style={styles.voicemailRowTop}>
+            <View style={styles.voicemailNameWrap}>
+              {entry.unread && <View style={styles.voicemailUnreadDot} />}
+              <Text style={[styles.voicemailName, entry.unread && styles.voicemailNameUnread]}>
+                {entry.name}
+              </Text>
+            </View>
+            <Text style={styles.voicemailTime}>{entry.time}</Text>
+          </View>
+
+          <View style={styles.voicemailMetaRow}>
+            <Text style={styles.voicemailMetaText}>{entry.phone}</Text>
+            <Text style={styles.voicemailMetaDivider}>•</Text>
+            <Text style={styles.voicemailMetaText}>{entry.duration}</Text>
+          </View>
+
+          <Text style={styles.voicemailTranscript} numberOfLines={2}>
+            {entry.transcript}
+          </Text>
+
+          <View style={styles.voicemailActionsRow}>
+            <View style={styles.voicemailActionChip}>
+              <Ionicons name="play" size={14} color="#30A7FF" />
+              <Text style={styles.voicemailActionText}>Play</Text>
+            </View>
+            <View style={styles.voicemailActionChip}>
+              <Ionicons name="call-outline" size={14} color="#30A7FF" />
+              <Text style={styles.voicemailActionText}>Call Back</Text>
+            </View>
+          </View>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 
   const renderContactDetails = () => {
@@ -696,7 +802,7 @@ export default function App() {
                       color={isActive ? '#30A7FF' : '#FFFFFF'}
                     />
                     <View style={styles.badge}>
-                      <Text style={styles.badgeText}>326</Text>
+                      <Text style={styles.badgeText}>{unreadVoicemailCount}</Text>
                     </View>
                   </View>
                 ) : (
@@ -724,7 +830,12 @@ export default function App() {
             <View style={styles.overlay}>
               <Pressable style={styles.backdrop} onPress={handleHideForm} />
               <KeyboardAvoidingView
-                style={styles.overlayKeyboardArea}
+                style={[
+                  styles.overlayKeyboardArea,
+                  Platform.OS === 'android' && keyboardHeight > 0
+                    ? { paddingBottom: keyboardHeight }
+                    : null,
+                ]}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
               >
@@ -739,7 +850,11 @@ export default function App() {
                   <ScrollView
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={styles.sheetScrollContent}
+                    keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                    contentContainerStyle={[
+                      styles.sheetScrollContent,
+                      keyboardHeight > 0 && styles.sheetScrollContentKeyboardOpen,
+                    ]}
                   >
                     <View style={styles.sheetHandle} />
                     <Text style={styles.sheetTitle}>
@@ -1191,6 +1306,111 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  voicemailContent: {
+    paddingBottom: 110,
+  },
+  voicemailSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#141416',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#232327',
+  },
+  voicemailSummaryLabel: {
+    color: '#8C8C92',
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  voicemailSummaryValue: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  voicemailRow: {
+    backgroundColor: '#141416',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#232327',
+  },
+  voicemailRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voicemailNameWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 12,
+  },
+  voicemailUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#30A7FF',
+    marginRight: 8,
+  },
+  voicemailName: {
+    color: '#E5E5EA',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  voicemailNameUnread: {
+    color: '#FFFFFF',
+  },
+  voicemailTime: {
+    color: '#8C8C92',
+    fontSize: 13,
+  },
+  voicemailMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  voicemailMetaText: {
+    color: '#8C8C92',
+    fontSize: 13,
+  },
+  voicemailMetaDivider: {
+    color: '#5F5F66',
+    fontSize: 13,
+    marginHorizontal: 6,
+  },
+  voicemailTranscript: {
+    color: '#C8C8CE',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  voicemailActionsRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+  },
+  voicemailActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1D1D20',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+  },
+  voicemailActionText: {
+    color: '#30A7FF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
   bottomTabBar: {
     position: 'absolute',
     left: 12,
@@ -1290,6 +1510,9 @@ const styles = StyleSheet.create({
   },
   sheetScrollContent: {
     paddingBottom: 12,
+  },
+  sheetScrollContentKeyboardOpen: {
+    paddingBottom: 36,
   },
   sheetHandle: {
     alignSelf: 'center',

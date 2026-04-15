@@ -30,7 +30,19 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
+
+# local/private app data
+*.db
+*.sqlite
+*.sqlite3
+private/
+secrets/
+storage/
+data/local/
+db.local.json
 
 # typescript
 *.tsbuildinfo

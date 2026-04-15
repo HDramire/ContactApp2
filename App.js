@@ -19,6 +19,12 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
+const CONTACT_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'favorites', label: 'Favorites' },
+  { key: 'notes', label: 'Notes' },
+];
+
 const INITIAL_CONTACTS = [
   { id: '1', name: 'Henry Ramirez Jr', phone: '239-784-6746', note: 'My card', favorite: true },
   { id: '2', name: 'Brian Abby (husband)', phone: '239-784-7865', favorite: true },
@@ -99,13 +105,36 @@ const KEYPAD_ROWS = [
   ['7', '8', '9'],
   ['*', '0', '#'],
 ];
+const KEYPAD_SUBLABELS = {
+  '1': '',
+  '2': 'ABC',
+  '3': 'DEF',
+  '4': 'GHI',
+  '5': 'JKL',
+  '6': 'MNO',
+  '7': 'PQRS',
+  '8': 'TUV',
+  '9': 'WXYZ',
+  '*': '',
+  '0': '+',
+  '#': '',
+};
 
 const sortContacts = (contacts) =>
   [...contacts].sort((a, b) => a.name.localeCompare(b.name));
 
-const buildSections = (contacts, query) => {
+const buildSections = (contacts, query, filter = 'all') => {
   const normalizedQuery = query.trim().toLowerCase();
   const filteredContacts = sortContacts(contacts).filter((contact) => {
+    const matchesFilter =
+      filter === 'all' ||
+      (filter === 'favorites' && contact.favorite) ||
+      (filter === 'notes' && contact.note);
+
+    if (!matchesFilter) {
+      return false;
+    }
+
     if (!normalizedQuery) {
       return true;
     }
@@ -185,19 +214,25 @@ const getRecentToneColor = (type) => {
 export default function App() {
   const [contacts, setContacts] = useState(INITIAL_CONTACTS);
   const [recents, setRecents] = useState(INITIAL_RECENTS);
-  const [voicemails] = useState(INITIAL_VOICEMAILS);
+  const [voicemails, setVoicemails] = useState(INITIAL_VOICEMAILS);
   const [activeTab, setActiveTab] = useState('contacts');
   const [showAddContact, setShowAddContact] = useState(false);
   const [formMode, setFormMode] = useState('add');
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [contactFilter, setContactFilter] = useState('all');
   const [newContact, setNewContact] = useState({ name: '', phone: '', note: '' });
   const [dialedNumber, setDialedNumber] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [activityMessage, setActivityMessage] = useState('Your contacts are ready.');
+  const [expandedVoicemailId, setExpandedVoicemailId] = useState(null);
   const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const sectionListRef = useRef(null);
 
-  const sections = useMemo(() => buildSections(contacts, searchQuery), [contacts, searchQuery]);
+  const sections = useMemo(
+    () => buildSections(contacts, searchQuery, contactFilter),
+    [contacts, searchQuery, contactFilter]
+  );
   const favoriteContacts = useMemo(
     () => sortContacts(contacts.filter((contact) => contact.favorite)),
     [contacts]
@@ -209,6 +244,15 @@ export default function App() {
   const unreadVoicemailCount = useMemo(
     () => voicemails.filter((voicemail) => voicemail.unread).length,
     [voicemails]
+  );
+  const contactsWithNotesCount = useMemo(
+    () => contacts.filter((contact) => !!contact.note).length,
+    [contacts]
+  );
+  const topRecent = useMemo(() => recents[0] ?? null, [recents]);
+  const visibleContactCount = useMemo(
+    () => sections.reduce((total, section) => total + section.data.length, 0),
+    [sections]
   );
 
   useEffect(() => {
@@ -229,8 +273,24 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!activityMessage) {
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setActivityMessage('');
+    }, 2600);
+
+    return () => clearTimeout(timer);
+  }, [activityMessage]);
+
   const resetForm = () => {
     setNewContact({ name: '', phone: '', note: '' });
+  };
+
+  const announce = (message) => {
+    setActivityMessage(message);
   };
 
   const handleShowForm = (mode = 'add', contact = null) => {
@@ -299,6 +359,7 @@ export default function App() {
         },
         ...currentRecents,
       ]);
+      announce(`Updated ${trimmedName}.`);
     } else {
       const createdContact = {
         id: Date.now().toString(),
@@ -320,25 +381,41 @@ export default function App() {
         ...currentRecents,
       ]);
       setSelectedContactId(createdContact.id);
+      announce(`Added ${trimmedName} to your contacts.`);
     }
 
     setActiveTab('contacts');
     setSearchQuery('');
+    setContactFilter('all');
     handleHideForm();
   };
 
   const toggleFavorite = (contactId) => {
+    let nextFavoriteState = false;
+
     setContacts((currentContacts) =>
-      currentContacts.map((contact) =>
-        contact.id === contactId
-          ? { ...contact, favorite: !contact.favorite }
-          : contact
-      )
+      currentContacts.map((contact) => {
+        if (contact.id === contactId) {
+          nextFavoriteState = !contact.favorite;
+          return { ...contact, favorite: nextFavoriteState };
+        }
+
+        return contact;
+      })
+    );
+
+    const contactName = contacts.find((contact) => contact.id === contactId)?.name ?? 'Contact';
+    announce(
+      nextFavoriteState ? `${contactName} added to favorites.` : `${contactName} removed from favorites.`
     );
   };
 
   const openContact = (contactId) => {
     setSelectedContactId(contactId);
+    const contactName = contacts.find((contact) => contact.id === contactId)?.name;
+    if (contactName) {
+      announce(`Viewing ${contactName}.`);
+    }
   };
 
   const handleBackAction = () => {
@@ -396,6 +473,7 @@ export default function App() {
       setDialedNumber('');
     }
 
+    announce(`Calling ${displayName}.`);
     Alert.alert('Calling', `Calling ${displayName} at ${phone}.`);
   };
 
@@ -410,6 +488,7 @@ export default function App() {
       },
       ...currentRecents,
     ]);
+    announce(`Message shortcut opened for ${contact.name}.`);
     Alert.alert('Messages', `Opening a conversation with ${contact.name}.`);
   };
 
@@ -433,6 +512,7 @@ export default function App() {
           setContacts((currentContacts) =>
             currentContacts.filter((contact) => contact.id !== selectedContact.id)
           );
+          announce(`${selectedContact.name} deleted.`);
           setSelectedContactId(null);
         },
       },
@@ -447,6 +527,7 @@ export default function App() {
     if (matchedContact) {
       setActiveTab('contacts');
       setSelectedContactId(matchedContact.id);
+      announce(`Opened ${matchedContact.name} from recents.`);
       return;
     }
 
@@ -456,6 +537,44 @@ export default function App() {
   const handleTabChange = (tabKey) => {
     setSelectedContactId(null);
     setActiveTab(tabKey);
+    setExpandedVoicemailId(null);
+    announce(`${getTabTitle(tabKey)} tab open.`);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    announce('Search cleared.');
+  };
+
+  const toggleVoicemailExpanded = (voicemailId) => {
+    setExpandedVoicemailId((currentId) => (currentId === voicemailId ? null : voicemailId));
+  };
+
+  const markVoicemailHeard = (voicemailId) => {
+    setVoicemails((currentVoicemails) =>
+      currentVoicemails.map((voicemail) =>
+        voicemail.id === voicemailId ? { ...voicemail, unread: false } : voicemail
+      )
+    );
+  };
+
+  const playVoicemail = (entry) => {
+    markVoicemailHeard(entry.id);
+    setExpandedVoicemailId(entry.id);
+    announce(`Playing voicemail from ${entry.name}.`);
+    Alert.alert('Voicemail', `Playing ${entry.duration} voicemail from ${entry.name}.`);
+  };
+
+  const callBackVoicemail = (entry) => {
+    markVoicemailHeard(entry.id);
+    placeCall(entry.phone, { name: entry.name, phone: entry.phone });
+  };
+
+  const applyContactFilter = (filterKey) => {
+    setContactFilter(filterKey);
+    announce(
+      `${CONTACT_FILTERS.find((filter) => filter.key === filterKey)?.label ?? 'All'} contacts shown.`
+    );
   };
 
   const renderContactRow = ({ item }) => {
@@ -470,6 +589,16 @@ export default function App() {
         <View style={styles.contactCopy}>
           <Text style={styles.contactName}>{item.name}</Text>
           <Text style={styles.contactMeta}>{item.note ?? item.phone}</Text>
+          <View style={styles.contactQuickActions}>
+            <Pressable style={styles.contactChip} onPress={() => placeCall(item.phone, item)}>
+              <Ionicons name="call-outline" size={13} color="#30A7FF" />
+              <Text style={styles.contactChipText}>Call</Text>
+            </Pressable>
+            <Pressable style={styles.contactChip} onPress={() => sendMessage(item)}>
+              <Ionicons name="chatbubble-outline" size={13} color="#30A7FF" />
+              <Text style={styles.contactChipText}>Message</Text>
+            </Pressable>
+          </View>
         </View>
 
         <Pressable style={styles.inlineIconButton} onPress={() => toggleFavorite(item.id)}>
@@ -503,6 +632,14 @@ export default function App() {
               <View style={styles.cardCopy}>
                 <Text style={styles.cardTitle}>{contact.name}</Text>
                 <Text style={styles.cardSubtitle}>{contact.phone}</Text>
+                <View style={styles.favoriteActions}>
+                  <Pressable style={styles.smallActionChip} onPress={() => placeCall(contact.phone, contact)}>
+                    <Text style={styles.smallActionChipText}>Call</Text>
+                  </Pressable>
+                  <Pressable style={styles.smallActionChip} onPress={() => sendMessage(contact)}>
+                    <Text style={styles.smallActionChipText}>Message</Text>
+                  </Pressable>
+                </View>
               </View>
               <Pressable style={styles.inlineIconButton} onPress={() => toggleFavorite(contact.id)}>
                 <Ionicons name="star" size={20} color="#FFD45C" />
@@ -517,14 +654,28 @@ export default function App() {
   const renderRecents = () => (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.panelContent}>
       {recents.map((entry) => (
-        <Pressable key={entry.id} style={styles.recentRow} onPress={() => openRecentEntry(entry)}>
-          <View>
-            <Text style={styles.recentName}>{entry.name}</Text>
-            <Text style={[styles.recentType, { color: getRecentToneColor(entry.type) }]}>
-              {`${entry.type} - ${entry.phone}`}
-            </Text>
+        <Pressable key={entry.id} style={styles.recentCard} onPress={() => openRecentEntry(entry)}>
+          <View style={styles.recentHeaderRow}>
+            <View>
+              <Text style={styles.recentName}>{entry.name}</Text>
+              <Text style={[styles.recentType, { color: getRecentToneColor(entry.type) }]}>
+                {`${entry.type} - ${entry.phone}`}
+              </Text>
+            </View>
+            <Text style={styles.recentTime}>{entry.time}</Text>
           </View>
-          <Text style={styles.recentTime}>{entry.time}</Text>
+
+          <View style={styles.recentActions}>
+            <Pressable
+              style={styles.smallActionChip}
+              onPress={() => placeCall(entry.phone, { name: entry.name, phone: entry.phone })}
+            >
+              <Text style={styles.smallActionChipText}>Call Again</Text>
+            </Pressable>
+            <Pressable style={styles.smallActionChip} onPress={() => openRecentEntry(entry)}>
+              <Text style={styles.smallActionChipText}>Open Contact</Text>
+            </Pressable>
+          </View>
         </Pressable>
       ))}
     </ScrollView>
@@ -532,17 +683,92 @@ export default function App() {
 
   const renderContacts = () => (
     <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.summaryRow}
+      >
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Visible</Text>
+          <Text style={styles.summaryValue}>{visibleContactCount}</Text>
+          <Text style={styles.summaryHint}>Matching your current view</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Favorites</Text>
+          <Text style={styles.summaryValue}>{favoriteContacts.length}</Text>
+          <Text style={styles.summaryHint}>Your fastest people to reach</Text>
+        </View>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Notes</Text>
+          <Text style={styles.summaryValue}>{contactsWithNotesCount}</Text>
+          <Text style={styles.summaryHint}>Contacts with extra context</Text>
+        </View>
+      </ScrollView>
+
+      {topRecent && (
+        <Pressable style={styles.spotlightCard} onPress={() => openRecentEntry(topRecent)}>
+          <View style={styles.spotlightHeader}>
+            <View>
+              <Text style={styles.spotlightEyebrow}>Quick return</Text>
+              <Text style={styles.spotlightTitle}>{topRecent.name}</Text>
+            </View>
+            <Text style={styles.spotlightTime}>{topRecent.time}</Text>
+          </View>
+          <Text style={styles.spotlightCopy}>{`${topRecent.type} on ${topRecent.phone}`}</Text>
+          <View style={styles.spotlightActions}>
+            <Pressable
+              style={styles.spotlightButtonPrimary}
+              onPress={() => placeCall(topRecent.phone, { name: topRecent.name, phone: topRecent.phone })}
+            >
+              <Ionicons name="call" size={15} color="#041119" />
+              <Text style={styles.spotlightButtonPrimaryText}>Call</Text>
+            </Pressable>
+            <Pressable style={styles.spotlightButtonSecondary} onPress={() => openRecentEntry(topRecent)}>
+              <Text style={styles.spotlightButtonSecondaryText}>Open</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
       <View style={styles.searchBar}>
         <Ionicons name="search" size={18} color="#A2A2A7" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search"
+          placeholder="Search name, phone, or note"
           placeholderTextColor="#8A8A8F"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-        <MaterialCommunityIcons name="microphone-outline" size={20} color="#E5E5EA" />
+        {searchQuery ? (
+          <Pressable onPress={clearSearch}>
+            <Ionicons name="close-circle" size={18} color="#C6C6CB" />
+          </Pressable>
+        ) : (
+          <MaterialCommunityIcons name="microphone-outline" size={20} color="#E5E5EA" />
+        )}
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {CONTACT_FILTERS.map((filter) => {
+          const isActive = contactFilter === filter.key;
+
+          return (
+            <Pressable
+              key={filter.key}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => applyContactFilter(filter.key)}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {filter.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
       <View style={styles.listFrame}>
         <SectionList
@@ -592,11 +818,15 @@ export default function App() {
   const renderKeypad = () => (
     <View style={styles.keypadScreen}>
       <Text style={styles.dialedNumber}>{dialedNumber || 'Enter number'}</Text>
+      <Text style={styles.keypadHint}>
+        {dialedNumber ? 'Tap call to add this number to recents.' : 'Tap digits to start a call.'}
+      </Text>
 
       <View style={styles.keypadGrid}>
         {KEYPAD_ROWS.flat().map((digit) => (
           <Pressable key={digit} style={styles.keypadButton} onPress={() => appendDigit(digit)}>
             <Text style={styles.keypadDigit}>{digit}</Text>
+            {!!KEYPAD_SUBLABELS[digit] && <Text style={styles.keypadSubLabel}>{KEYPAD_SUBLABELS[digit]}</Text>}
           </Pressable>
         ))}
       </View>
@@ -623,7 +853,11 @@ export default function App() {
       </View>
 
       {voicemails.map((entry) => (
-        <Pressable key={entry.id} style={styles.voicemailRow}>
+        <Pressable
+          key={entry.id}
+          style={styles.voicemailRow}
+          onPress={() => toggleVoicemailExpanded(entry.id)}
+        >
           <View style={styles.voicemailRowTop}>
             <View style={styles.voicemailNameWrap}>
               {entry.unread && <View style={styles.voicemailUnreadDot} />}
@@ -640,18 +874,26 @@ export default function App() {
             <Text style={styles.voicemailMetaText}>{entry.duration}</Text>
           </View>
 
-          <Text style={styles.voicemailTranscript} numberOfLines={2}>
+          <Text
+            style={styles.voicemailTranscript}
+            numberOfLines={expandedVoicemailId === entry.id ? 0 : 2}
+          >
             {entry.transcript}
           </Text>
 
           <View style={styles.voicemailActionsRow}>
-            <View style={styles.voicemailActionChip}>
+            <Pressable style={styles.voicemailActionChip} onPress={() => playVoicemail(entry)}>
               <Ionicons name="play" size={14} color="#30A7FF" />
               <Text style={styles.voicemailActionText}>Play</Text>
-            </View>
-            <View style={styles.voicemailActionChip}>
+            </Pressable>
+            <Pressable style={styles.voicemailActionChip} onPress={() => callBackVoicemail(entry)}>
               <Ionicons name="call-outline" size={14} color="#30A7FF" />
               <Text style={styles.voicemailActionText}>Call Back</Text>
+            </Pressable>
+            <View style={styles.voicemailExpandWrap}>
+              <Text style={styles.voicemailExpandText}>
+                {expandedVoicemailId === entry.id ? 'Show less' : 'Read more'}
+              </Text>
             </View>
           </View>
         </Pressable>
@@ -788,6 +1030,13 @@ export default function App() {
           </View>
 
           <View style={styles.contentArea}>{renderActiveTab()}</View>
+
+          {!!activityMessage && (
+            <View style={styles.toast}>
+              <Ionicons name="sparkles-outline" size={15} color="#8ED8FF" />
+              <Text style={styles.toastText}>{activityMessage}</Text>
+            </View>
+          )}
 
           <View style={styles.bottomTabBar}>
             {TABS.map((tab) => {
@@ -973,12 +1222,136 @@ const styles = StyleSheet.create({
     height: 44,
     marginBottom: 14,
   },
+  summaryRow: {
+    paddingRight: 6,
+    marginBottom: 14,
+  },
+  summaryCard: {
+    width: 132,
+    backgroundColor: '#141416',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: '#232327',
+  },
+  summaryLabel: {
+    color: '#8C8C92',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  summaryValue: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  summaryHint: {
+    color: '#9B9BA1',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  spotlightCard: {
+    backgroundColor: '#11232D',
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#214657',
+  },
+  spotlightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  spotlightEyebrow: {
+    color: '#79CFFF',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  spotlightTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  spotlightTime: {
+    color: '#B2DFF8',
+    fontSize: 13,
+    marginLeft: 12,
+  },
+  spotlightCopy: {
+    color: '#D4EEFF',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  spotlightActions: {
+    flexDirection: 'row',
+    marginTop: 16,
+  },
+  spotlightButtonPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8ED8FF',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginRight: 10,
+  },
+  spotlightButtonPrimaryText: {
+    color: '#041119',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  spotlightButtonSecondary: {
+    justifyContent: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  spotlightButtonSecondaryText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   searchInput: {
     flex: 1,
     color: '#FFFFFF',
     fontSize: 17,
     marginLeft: 8,
     marginRight: 8,
+  },
+  filterRow: {
+    paddingBottom: 12,
+    paddingRight: 6,
+  },
+  filterChip: {
+    backgroundColor: '#17181B',
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#26292D',
+  },
+  filterChipActive: {
+    backgroundColor: '#30A7FF',
+    borderColor: '#30A7FF',
+  },
+  filterChipText: {
+    color: '#D6D6DB',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#06131B',
   },
   listFrame: {
     flex: 1,
@@ -1032,6 +1405,25 @@ const styles = StyleSheet.create({
     color: '#8C8C92',
     fontSize: 15,
     marginTop: 1,
+  },
+  contactQuickActions: {
+    flexDirection: 'row',
+    marginTop: 10,
+  },
+  contactChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#151D22',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+  },
+  contactChipText: {
+    color: '#8ED8FF',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 4,
   },
   inlineIconButton: {
     width: 34,
@@ -1101,13 +1493,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 3,
   },
-  recentRow: {
+  favoriteActions: {
+    flexDirection: 'row',
+    marginTop: 10,
+  },
+  smallActionChip: {
+    backgroundColor: '#1D1D20',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  smallActionChipText: {
+    color: '#E9E9EE',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  recentCard: {
+    backgroundColor: '#141416',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#232327',
+  },
+  recentHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#202022',
   },
   recentName: {
     color: '#FFFFFF',
@@ -1123,6 +1537,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 12,
   },
+  recentActions: {
+    flexDirection: 'row',
+    marginTop: 14,
+  },
   keypadScreen: {
     flex: 1,
     alignItems: 'center',
@@ -1135,6 +1553,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 28,
     minHeight: 42,
+  },
+  keypadHint: {
+    color: '#8C8C92',
+    fontSize: 14,
+    marginTop: -16,
+    marginBottom: 24,
   },
   keypadGrid: {
     width: '100%',
@@ -1158,6 +1582,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 32,
     fontWeight: '500',
+  },
+  keypadSubLabel: {
+    color: '#8C8C92',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    marginTop: 4,
   },
   keypadActions: {
     flexDirection: 'row',
@@ -1395,6 +1826,8 @@ const styles = StyleSheet.create({
   voicemailActionsRow: {
     flexDirection: 'row',
     marginTop: 14,
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   voicemailActionChip: {
     flexDirection: 'row',
@@ -1410,6 +1843,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  voicemailExpandWrap: {
+    paddingVertical: 8,
+  },
+  voicemailExpandText: {
+    color: '#8C8C92',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  toast: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F202B',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#214657',
+  },
+  toastText: {
+    color: '#DDF4FF',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
   },
   bottomTabBar: {
     position: 'absolute',
